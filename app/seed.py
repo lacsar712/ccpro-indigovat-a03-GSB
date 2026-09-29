@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import DipLot, User, Vat, Workshop
+from app.models import DipLot, RedoxRetest, User, Vat, Workshop
 
 _PWD_SALT = os.environ.get("PWD_SALT", "indigovat-dev-salt").encode("utf-8")
 
@@ -139,5 +139,25 @@ def ensure_seed_data(db: Session) -> None:
                 (10, "38.50", "-530.00"),
             ],
         )
+    )
+
+    # 仅 V-01 一缸给 2 条复测（不足 3 条连续，改可染色时会提示还差 1 条）。
+    db.add_all(
+        [
+            RedoxRetest(
+                vat_id=v1.id,
+                seq=1,
+                redoxMv=Decimal("-512.00"),
+                sampledAt=now - timedelta(hours=3),
+                operator="杨师傅",
+            ),
+            RedoxRetest(
+                vat_id=v1.id,
+                seq=2,
+                redoxMv=Decimal("-520.00"),
+                sampledAt=now - timedelta(hours=2),
+                operator="杨师傅",
+            ),
+        ]
     )
     db.commit()

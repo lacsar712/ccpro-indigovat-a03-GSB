@@ -100,6 +100,94 @@
     .user-pill button:hover {
       background: rgba(216, 235, 232, 0.12);
     }
+    .top-nav {
+      display: flex;
+      gap: 0.35rem;
+      margin-right: 0.5rem;
+    }
+    .top-nav a {
+      padding: 0.28rem 0.75rem;
+      font-size: 0.85rem;
+      border: 1px solid rgba(216, 235, 232, 0.45);
+      border-radius: 999px;
+      color: var(--foam);
+      text-decoration: none;
+    }
+    .top-nav a:hover { background: rgba(216, 235, 232, 0.12); }
+    .top-nav a.on {
+      background: linear-gradient(135deg, rgba(61, 139, 156, 0.85), rgba(31, 77, 107, 0.95));
+      border-color: rgba(216, 235, 232, 0.65);
+    }
+    .vat-card .retest-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+      margin-top: 0.45rem;
+      font-size: 0.74rem;
+    }
+    .vat-card .retest-chip a {
+      color: #bfe6dd;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .vat-card .retest-n {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.85;
+      padding: 0.05rem 0.45rem;
+      border-radius: 999px;
+      background: rgba(216, 235, 232, 0.14);
+    }
+    .retest-panel {
+      background: linear-gradient(165deg, rgba(244, 248, 247, 0.97), rgba(232, 242, 240, 0.94));
+      border: 1px solid rgba(31, 77, 107, 0.18);
+      border-radius: 16px;
+      padding: 1.15rem 1.25rem 1.35rem;
+      box-shadow: 0 12px 36px rgba(8, 20, 32, 0.28);
+      color: var(--ink);
+    }
+    .retest-panel h2 { margin: 0 0 0.25rem; font-size: 1.25rem; color: var(--indigo-deep); }
+    .retest-panel h3 { font-size: 1rem; margin: 0 0 0.65rem; color: #1f4d6b; }
+    .retest-panel label { font-size: 0.88rem; color: #2a4554; }
+    .retest-panel input, .retest-panel select { background: #fff; border-color: #b7cdd0; }
+    .retest-panel button[type="submit"] {
+      width: auto;
+      background: var(--indigo-mid);
+      border-color: var(--indigo-mid);
+    }
+    .retest-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 860px) { .retest-grid { grid-template-columns: 1fr; } }
+    .retest-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .retest-table th, .retest-table td {
+      text-align: left;
+      padding: 0.45rem 0.55rem;
+      border-bottom: 1px dashed #c5d8d6;
+      white-space: nowrap;
+    }
+    .retest-table td.wrap { white-space: normal; }
+    .retest-table input, .retest-table select {
+      margin: 0;
+      padding: 0.25rem 0.4rem;
+      font-size: 0.84rem;
+      width: 100%;
+      min-width: 7rem;
+    }
+    .retest-table button { margin: 0; padding: 0.3rem 0.7rem; width: auto; font-size: 0.82rem; }
+    .rule-card {
+      background: rgba(31, 77, 107, 0.06);
+      border: 1px solid rgba(31, 77, 107, 0.15);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+      font-size: 0.86rem;
+      color: #35505a;
+      margin-bottom: 1rem;
+    }
+    .rule-card strong { color: var(--indigo-deep); }
     .chips {
       display: flex;
       flex-wrap: wrap;
@@ -292,6 +380,10 @@
         <p class="sub">IndigoVat · 按缸位盯氧化还原，点开记浸染与改状态</p>
       </div>
       <div class="user-pill">
+        <nav class="top-nav" aria-label="主导航">
+          <a href="/" {% if active == 'bay' %}class="on"{% endif %}>还原台</a>
+          <a href="/retests" {% if active == 'retests' %}class="on"{% endif %}>电位复测专页</a>
+        </nav>
         <span>{{ user.username }}</span>
         <form method="post" action="/logout">
           <button type="submit">退出</button>

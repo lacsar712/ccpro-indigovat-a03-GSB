@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}电位复测{% endblock %}
+{% block content %}
+<div x-data="retestPage()">
+  <div class="chips" role="toolbar" aria-label="工坊筛选">
+    <a class="chip {% if filter_workshop is none %}on{% endif %}"
+       href="/retests{% if selected_vat %}?vat={{ selected_vat }}{% endif %}">全部缸位</a>
+    {% for w in workshops %}
+    <a
+      class="chip {% if filter_workshop == w.id %}on{% endif %}"
+      href="/retests?workshop={{ w.id }}{% if selected_vat %}&vat={{ selected_vat }}{% endif %}"
+    >{{ w.name }}</a>
+    {% endfor %}
+  </div>
+
+  {% if error %}
+  <div class="error-box">{{ error }}</div>
+  {% endif %}
+
+  <div class="retest-grid">
+    <div class="retest-panel">
+      <h2>电位复测记账</h2>
+      <div class="rule-card">
+        <strong>登记规则：</strong>仅「还原中」缸可登记复测；每条含复测序号、电位毫伏、采样时刻、复测人；
+        同缸序号唯一，电位必填且不得高于 <strong>-480 mV</strong>（新建与更新同校验）。<br>
+        <strong>改可染色均值规则：</strong>在原「最新浸染电位 ≤ -500 mV」门槛之外，另需至少
+        <strong>3 条连续序号</strong>复测、三条电位<strong>算术平均 ≤ -510 mV</strong>，且
+        <strong>最后一次复测晚于该缸最近浸染</strong>；全部通过后三条<strong>平均值回写</strong>为该缸最新浸染批次的电位
+        （还原台展开区所见即库内值，不分叉）；任一不满足则中文提示缺项，状态与电位都不改。
+      </div>
+
+      {% if selected %}
+      <h3>{{ selected.code }} · {{ selected.workshopName }} · {{ selected.dyeType }}
+        <span style="font-weight:400;color:#4a6670">（{{ selected.statusLabel }}，已登记 {{ selected.retests|length }} 条）</span>
+      </h3>
+
+      {% if selected.status != 'reducing' %}
+      <p style="color:#8b1e1e;font-size:0.9rem">该缸当前为「{{ selected.statusLabel }}」，只有还原中的缸允许登记或修改复测。</p>
+      {% else %}
+      <form method="post" action="/retests/vats/{{ selected.id }}/create" style="margin-bottom:1.1rem">
+        <input type="hidden" name="workshop" value="{{ filter_workshop if filter_workshop is not none else '' }}">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.6rem 0.8rem">
+          <label>复测序号（同缸唯一）
+            <input type="number" name="seq" step="1" required value="{{ form.seq if form else selected.nextSeq }}">
+          </label>
+          <label>复测人
+            <input type="text" name="operator" maxlength="80" required placeholder="例如 杨师傅"
+                   value="{{ form.operator if form else '' }}">
+          </label>
+          <label>电位毫伏（≤ -480）
+            <input type="number" name="redoxMv" step="0.01" required placeholder="例如 -520"
+                   value="{{ form.redoxMv if form else '' }}">
+          </label>
+          <label>采样时刻
+            <input type="datetime-local" name="sampledAt" required
+                   value="{{ form.sampledAt if form else '' }}"
+                   {% if not form %}x-init="if(!$el.value) $el.value = nowLocal()"{% endif %}>
+          </label>
+        </div>
+        <button type="submit" style="margin-top:0.7rem">登记复测</button>
+      </form>
+      {% endif %}
+
+      <table class="retest-table">
+        <thead>
+          <tr>
+            <th style="width:4rem">序号</th><th style="width:7rem">电位 mV</th>
+            <th>采样时刻</th><th>复测人</th>
+            {% if selected.status == 'reducing' %}<th style="width:8.5rem"></th>{% endif %}
+          </tr>
+        </thead>
+        {% for r in selected.retests %}
+        <tbody x-data="{ editing: {{ 'true' if form.editId == r.id else 'false' }} }">
+          <tr x-show="!editing">
+            <td>{{ r.seq }}</td>
+            <td>{{ r.redoxMv }}</td>
+            <td>{{ r.sampledAtLabel }}</td>
+            <td class="wrap">{{ r.operator }}</td>
+            {% if selected.status == 'reducing' %}
+            <td style="text-align:right"><button type="button" @click="editing = true">修改</button></td>
+            {% endif %}
+          </tr>
+          {% if selected.status == 'reducing' %}
+          <tr x-show="editing" x-cloak>
+            <td colspan="5" style="padding:0.5rem 0">
+              <form method="post" action="/retests/{{ r.id }}/update">
+                <input type="hidden" name="workshop" value="{{ filter_workshop if filter_workshop is not none else '' }}">
+                <div style="display:grid;grid-template-columns:4rem 7rem 1fr 1fr auto;gap:0.5rem;align-items:center">
+                  <input type="number" name="seq" step="1" required
+                         value="{{ form.seq if form.editId == r.id else r.seq }}">
+                  <input type="number" name="redoxMv" step="0.01" required
+                         value="{{ form.redoxMv if form.editId == r.id else r.redoxMv }}">
+                  <input type="datetime-local" name="sampledAt" required
+                         value="{{ form.sampledAt if form.editId == r.id else r.sampledAt }}">
+                  <input type="text" name="operator" maxlength="80" required
+                         value="{{ form.operator if form.editId == r.id else r.operator }}">
+                  <span style="white-space:nowrap">
+                    <button type="submit">保存</button>
+                    <button type="button" @click="editing = false">取消</button>
+                  </span>
+                </div>
+              </form>
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+        {% endfor %}
+        {% if not selected.retests %}
+        <tbody>
+          <tr><td colspan="5" style="color:#6b7c85;border:0;padding-top:0.7rem">本缸暂无复测记录。</td></tr>
+        </tbody>
+        {% endif %}
+      </table>
+      {% else %}
+      <p style="color:#4a6670;font-size:0.92rem">请从右侧筛缸列表选择一个染缸，查看与登记复测。</p>
+      {% endif %}
+    </div>
+
+    <div class="retest-panel">
+      <h3 style="margin-top:0">筛缸列表</h3>
+      <table class="retest-table">
+        <thead>
+          <tr><th>缸号</th><th>工坊</th><th>状态</th><th style="text-align:right">复测条数</th></tr>
+        </thead>
+        <tbody>
+          {% for v in vats %}
+          {% if filter_workshop is none or v.workshopId == filter_workshop %}
+          <tr style="{% if selected_vat == v.id %}background:rgba(61,139,156,0.12){% endif %}">
+            <td>
+              <a href="/retests?vat={{ v.id }}{% if filter_workshop is not none %}&workshop={{ filter_workshop }}{% endif %}"
+                 style="color:var(--indigo-mid);font-weight:600">{{ v.code }}</a>
+            </td>
+            <td>{{ v.workshopName }}</td>
+            <td>{{ v.statusLabel }}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums">{{ v.retestCount }} 条</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="rule-foot" style="color:#5a7681">
+        条数与还原台缸位条一致；复测只记账，改可染色时才在同一判定函数中核算均值并回写。
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  function retestPage() {
+    return {
+      nowLocal() {
+        const d = new Date();
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 16);
+      },
+    };
+  }
+</script>
+{% endblock %}

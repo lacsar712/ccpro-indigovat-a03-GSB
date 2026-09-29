@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.db import Base, SessionLocal, engine
-from app.routers import auth, pages
+from app.routers import auth, pages, retests
 from app.seed import ensure_seed_data
 
 
@@ -37,3 +37,4 @@ if static_dir.exists():
 
 app.include_router(auth.router)
 app.include_router(pages.router)
+app.include_router(retests.router)

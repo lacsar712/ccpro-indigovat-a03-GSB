@@ -24,12 +24,13 @@
 
   <div class="bay-scroll" role="list">
     <template x-for="v in filteredVats()" :key="v.id">
-      <button
-        type="button"
+      <div
         class="vat-card"
         :class="['st-' + v.status, { selected: selectedId === v.id }]"
-        role="listitem"
+        role="button"
+        tabindex="0"
         @click="toggle(v.id)"
+        @keydown.enter="toggle(v.id)"
       >
         <div class="code" x-text="v.code"></div>
         <div class="meta" x-text="v.workshopName + ' · ' + v.dyeType"></div>
@@ -63,7 +64,11 @@
             <span>尚无电位</span>
           </template>
         </div>
-      </button>
+        <div class="retest-chip">
+          <a :href="'/retests?vat=' + v.id" @click.stop>电位复测</a>
+          <span class="retest-n" x-text="v.retestCount + ' 条'"></span>
+        </div>
+      </div>
     </template>
   </div>
   <p class="empty-bay" x-show="filteredVats().length === 0" x-cloak>此工坊暂无染缸。</p>
@@ -78,7 +83,9 @@
         </h2>
         <p class="hint">当前 <strong x-text="selected().statusLabel"></strong>
           · 最近浸染 <span x-text="selected().lastDippedAt || '—'"></span>
-          · 设为可染色须最新批次电位 ≤ -500 mV</p>
+          · 已有复测 <strong x-text="selected().retestCount + ' 条'"></strong>
+          · 设为可染色须：最新浸染电位 ≤ -500 mV，且至少 3 条连续序号复测的均值 ≤ -510 mV、最后复测晚于最近浸染；通过后均值回写最新浸染电位。
+          详见 <a :href="'/retests?vat=' + selected().id">电位复测专页</a>。</p>
 
         <div class="panel-grid">
           <div>
@@ -130,7 +137,9 @@
     </template>
   </div>
 
-  <p class="rule-foot">工坊只作缸位筛选片；浸染与状态均在缸位展开区内完成，无独立表页。</p>
+  <p class="rule-foot">工坊只作缸位筛选片；浸染与状态均在缸位展开区内完成。电位复测在
+    <a href="/retests" style="color:#bfe6dd">电位复测专页</a>
+    记账，改可染色时同一判定函数核算均值并回写最新浸染电位。</p>
 </div>
 
 <script>

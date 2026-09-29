@@ -70,6 +70,7 @@ def _vat_payload(vat: Vat) -> dict:
         "statusLabel": STATUS_LABELS.get(vat.status, vat.status),
         "workshopId": vat.workshop_id,
         "workshopName": vat.workshop.name if vat.workshop else "",
+        "retestCount": len(vat.retests),
         "lastRedox": float(latest.redoxMv) if latest and latest.redoxMv is not None else None,
         "lastMeters": float(latest.clothMeters) if latest else None,
         "lastDippedAt": latest.dippedAt.strftime("%Y-%m-%d %H:%M") if latest else None,
@@ -98,7 +99,11 @@ def _bay_context(
     workshops = db.query(Workshop).order_by(Workshop.name).all()
     vats = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(
+            joinedload(Vat.workshop),
+            joinedload(Vat.lots),
+            joinedload(Vat.retests),
+        )
         .order_by(Vat.code)
         .all()
     )
@@ -141,7 +146,11 @@ async def bay_vat_status(
         return RedirectResponse("/login", status_code=303)
     item = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(
+            joinedload(Vat.workshop),
+            joinedload(Vat.lots),
+            joinedload(Vat.retests),
+        )
         .filter(Vat.id == pk)
         .first()
     )
@@ -151,7 +160,11 @@ async def bay_vat_status(
     error = None
     try:
         latest = item.latest_lot()
-        validate_vat_status_change(item, status, latest)
+        # 同一判定函数：原浸染电位门槛 + 复测均值门槛，全过后才一起落库，
+        # 避免「状态改了、电位没回写」的半截状态。
+        mean = validate_vat_status_change(item, status, latest, item.retests)
+        if status == Vat.STATUS_READY and latest is not None and mean is not None:
+            latest.redoxMv = mean
         item.status = status
         db.commit()
         return RedirectResponse(f"/?vat={pk}" + (f"&workshop={ws}" if ws else ""), status_code=303)
