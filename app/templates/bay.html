@@ -63,6 +63,7 @@
             <span>尚无电位</span>
           </template>
         </div>
+        <div class="retest-badge" x-text="'电位复测 ' + v.retestCount + ' 条'"></div>
       </button>
     </template>
   </div>
@@ -78,7 +79,10 @@
         </h2>
         <p class="hint">当前 <strong x-text="selected().statusLabel"></strong>
           · 最近浸染 <span x-text="selected().lastDippedAt || '—'"></span>
-          · 设为可染色须最新批次电位 ≤ -500 mV</p>
+          · 电位复测 <strong x-text="selected().retestCount"></strong> 条
+          （<a :href="'/retests?vat=' + selected().id">去复测专页登记</a>）<br>
+          设为可染色须：最新批次电位 ≤ -500 mV，且至少 3 条连续序号复测、
+          最近三条算术平均 ≤ -510 mV、最后复测晚于最近浸染；通过后平均值回写最新浸染电位。</p>
 
         <div class="panel-grid">
           <div>
@@ -130,7 +134,7 @@
     </template>
   </div>
 
-  <p class="rule-foot">工坊只作缸位筛选片；浸染与状态均在缸位展开区内完成，无独立表页。</p>
+  <p class="rule-foot">工坊只作缸位筛选片；浸染与状态均在缸位展开区内完成，无独立表页。电位复测在顶栏「电位复测专页」记账，不随登记改缸状态。</p>
 </div>
 
 <script>

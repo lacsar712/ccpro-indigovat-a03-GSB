@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import DipLot, User, Vat, Workshop
+from app.models import DipLot, RedoxRetest, User, Vat, Workshop
 
 _PWD_SALT = os.environ.get("PWD_SALT", "indigovat-dev-salt").encode("utf-8")
 
@@ -108,6 +108,26 @@ def ensure_seed_data(db: Session) -> None:
                 (8, "45.00", "-520.00"),
             ],
         )
+    )
+    # 种子只给 V-01 一缸 2 条复测（采样均晚于其最近浸染）：
+    # 差 1 条连续复测，均值门槛初始不满足，须到复测专页再登记
+    db.add_all(
+        [
+            RedoxRetest(
+                vat_id=v1.id,
+                seq=1,
+                redoxMv=Decimal("-518.00"),
+                sampledAt=now - timedelta(hours=5),
+                operator="杨师傅",
+            ),
+            RedoxRetest(
+                vat_id=v1.id,
+                seq=2,
+                redoxMv=Decimal("-522.00"),
+                sampledAt=now - timedelta(hours=3),
+                operator="杨师傅",
+            ),
+        ]
     )
     db.add_all(
         lots(

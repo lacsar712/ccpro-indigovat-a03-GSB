@@ -281,6 +281,110 @@
       color: rgba(216, 235, 232, 0.62);
       text-align: center;
     }
+    .top-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.55rem;
+    }
+    .nav-link {
+      font-size: 0.88rem;
+      color: rgba(216, 235, 232, 0.78);
+      text-decoration: none;
+      padding: 0.25rem 0.8rem;
+      border: 1px solid rgba(216, 235, 232, 0.3);
+      border-radius: 999px;
+    }
+    .nav-link:hover {
+      color: var(--foam);
+      border-color: rgba(216, 235, 232, 0.7);
+      background: rgba(216, 235, 232, 0.1);
+    }
+    .nav-link.on {
+      color: #0b2b3a;
+      background: #9fd4c8;
+      border-color: #9fd4c8;
+      font-weight: 600;
+    }
+    .retest-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    .retest-table-wrap { overflow-x: auto; }
+    .retest-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .retest-table th, .retest-table td {
+      padding: 0.45rem 0.6rem;
+      text-align: left;
+      border-bottom: 1px solid #dbe9e7;
+      white-space: nowrap;
+    }
+    .retest-table th {
+      background: #e3efec;
+      color: #1f4d6b;
+      font-weight: 600;
+    }
+    .retest-table .no-data {
+      text-align: center;
+      color: #6b7c85;
+      padding: 1rem;
+    }
+    .retest-table .row-act { text-align: right; }
+    .link-btn {
+      appearance: none;
+      border: 0;
+      background: none;
+      color: var(--indigo-wash);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0;
+      width: auto;
+      margin: 0;
+    }
+    .link-btn:hover { text-decoration: underline; background: none; }
+    .edit-row td { background: #f0f6f4; }
+    .inline-edit {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 0.6rem;
+    }
+    .inline-edit label {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.78rem;
+      margin: 0;
+    }
+    .inline-edit input { width: 9.5rem; margin: 0; }
+    .inline-edit .edit-title {
+      width: 100%;
+      font-size: 0.82rem;
+      color: #4a6670;
+      margin-bottom: 0.1rem;
+    }
+    .inline-edit .edit-acts {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+    }
+    .inline-edit button[type="submit"] {
+      width: auto;
+      padding: 0.45rem 0.9rem;
+    }
+    .retest-badge {
+      display: inline-block;
+      margin-top: 0.3rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+      color: #bfe3da;
+      opacity: 0.92;
+    }
   </style>
 </head>
 <body>
@@ -290,6 +394,10 @@
       <div>
         <h1>染缸还原台</h1>
         <p class="sub">IndigoVat · 按缸位盯氧化还原，点开记浸染与改状态</p>
+        <nav class="top-nav" aria-label="主导航">
+          <a href="/" class="nav-link {% if active == 'bay' %}on{% endif %}">还原台</a>
+          <a href="/retests" class="nav-link {% if active == 'retests' %}on{% endif %}">电位复测专页</a>
+        </nav>
       </div>
       <div class="user-pill">
         <span>{{ user.username }}</span>

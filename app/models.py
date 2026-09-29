@@ -55,6 +55,7 @@ class Vat(Base):
 
     workshop: Mapped["Workshop"] = relationship(back_populates="vats")
     lots: Mapped[list["DipLot"]] = relationship(back_populates="vat")
+    retests: Mapped[list["RedoxRetest"]] = relationship(back_populates="vat")
 
     def latest_lot(self) -> Optional["DipLot"]:
         if not self.lots:
@@ -72,3 +73,21 @@ class DipLot(Base):
     redoxMv: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
 
     vat: Mapped["Vat"] = relationship(back_populates="lots")
+
+
+class RedoxRetest(Base):
+    """还原中缸位的电位复测记账表，与缸状态改写完全脱钩。"""
+
+    __tablename__ = "redox_retests"
+    __table_args__ = (
+        UniqueConstraint("vat_id", "seq", name="uniq_retest_seq_per_vat"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vat_id: Mapped[int] = mapped_column(ForeignKey("vats.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column()
+    redoxMv: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    sampledAt: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    operator: Mapped[str] = mapped_column(String(80), default="")
+
+    vat: Mapped["Vat"] = relationship(back_populates="retests")

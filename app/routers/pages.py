@@ -7,12 +7,17 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jinja2.utils import markupsafe
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.models import DipLot, Vat, Workshop
-from app.services.vat_rules import VatRuleError, validate_vat_status_change
+from app.models import DipLot, RedoxRetest, Vat, Workshop
+from app.services.vat_rules import (
+    VatRuleError,
+    validate_retest_fields,
+    validate_vat_status_change,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -73,6 +78,7 @@ def _vat_payload(vat: Vat) -> dict:
         "lastRedox": float(latest.redoxMv) if latest and latest.redoxMv is not None else None,
         "lastMeters": float(latest.clothMeters) if latest else None,
         "lastDippedAt": latest.dippedAt.strftime("%Y-%m-%d %H:%M") if latest else None,
+        "retestCount": len(vat.retests),
         "spark": _spark_points(chronological),
         "recentLots": [
             {
@@ -98,7 +104,11 @@ def _bay_context(
     workshops = db.query(Workshop).order_by(Workshop.name).all()
     vats = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(
+            joinedload(Vat.workshop),
+            joinedload(Vat.lots),
+            joinedload(Vat.retests),
+        )
         .order_by(Vat.code)
         .all()
     )
@@ -141,7 +151,11 @@ async def bay_vat_status(
         return RedirectResponse("/login", status_code=303)
     item = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(
+            joinedload(Vat.workshop),
+            joinedload(Vat.lots),
+            joinedload(Vat.retests),
+        )
         .filter(Vat.id == pk)
         .first()
     )
@@ -151,7 +165,13 @@ async def bay_vat_status(
     error = None
     try:
         latest = item.latest_lot()
-        validate_vat_status_change(item, status, latest)
+        should_writeback, mean = validate_vat_status_change(
+            item, status, latest, item.retests
+        )
+        if should_writeback:
+            # 均值门槛与原浸染电位门槛同一判定函数通过后，
+            # 才把平均值回写到最新浸染电位，与状态改写同事务提交
+            latest.redoxMv = mean
         item.status = status
         db.commit()
         return RedirectResponse(f"/?vat={pk}" + (f"&workshop={ws}" if ws else ""), status_code=303)
@@ -201,6 +221,244 @@ async def bay_log_lot(
         request,
         "bay.html",
         _bay_context(request, db, user, ws, pk, error),
+        status_code=400,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 电位复测专页：独立记账表，登记动作不改动任何缸状态
+# ---------------------------------------------------------------------------
+
+
+def _retest_rows(vat: Vat) -> list[dict]:
+    rows = sorted(vat.retests, key=lambda r: (r.seq, r.id))
+    return [
+        {
+            "id": r.id,
+            "vatId": vat.id,
+            "code": vat.code,
+            "seq": r.seq,
+            "redoxMv": float(r.redoxMv),
+            "sampledAt": r.sampledAt.strftime("%Y-%m-%dT%H:%M"),
+            "sampledAtLabel": r.sampledAt.strftime("%Y-%m-%d %H:%M"),
+            "operator": r.operator,
+        }
+        for r in rows
+    ]
+
+
+def _retest_context(
+    request: Request,
+    db: Session,
+    user,
+    vat_id: Optional[int] = None,
+    error: Optional[str] = None,
+    pending: Optional[dict] = None,
+):
+    vats = (
+        db.query(Vat)
+        .options(joinedload(Vat.workshop), joinedload(Vat.retests))
+        .order_by(Vat.code)
+        .all()
+    )
+    vat_cards = [
+        {
+            "id": v.id,
+            "code": v.code,
+            "workshopName": v.workshop.name if v.workshop else "",
+            "status": v.status,
+            "statusLabel": STATUS_LABELS.get(v.status, v.status),
+            "retestCount": len(v.retests),
+        }
+        for v in vats
+    ]
+    selected = next((v for v in vats if v.id == vat_id), None)
+    shown = [selected] if selected is not None else vats
+    retests: list[dict] = []
+    for v in shown:
+        retests.extend(_retest_rows(v))
+    retests.sort(key=lambda r: (r["code"], r["seq"]))
+
+    selected_obj = selected
+    next_seq = 1
+    if selected_obj is not None and selected_obj.retests:
+        next_seq = max(r.seq for r in selected_obj.retests) + 1
+
+    now_local = datetime.now().strftime("%Y-%m-%dT%H:%M")
+
+    return {
+        "request": request,
+        "user": user,
+        "vats": vat_cards,
+        "retests": retests,
+        "selected_vat": vat_id,
+        "selected_status": selected_obj.status if selected_obj else None,
+        "selected_status_label": (
+            STATUS_LABELS.get(selected_obj.status, selected_obj.status)
+            if selected_obj
+            else None
+        ),
+        "next_seq": next_seq,
+        "now_local": now_local,
+        "current_username": user.username,
+        "error": error,
+        "pending": pending or {},
+        "status_labels": STATUS_LABELS,
+        "active": "retests",
+    }
+
+
+def _parse_retest_form(seq_raw: str, mv_raw: str, sampled_raw: str, operator: str):
+    try:
+        seq = int(seq_raw)
+    except (TypeError, ValueError):
+        raise VatRuleError("复测序号须为整数。")
+    if mv_raw is None or not mv_raw.strip():
+        raise VatRuleError("复测电位必须填写，且数值不得高于 -480 mV。")
+    try:
+        redox_mv = Decimal(mv_raw.strip())
+    except InvalidOperation:
+        raise VatRuleError("复测电位不是有效数值。")
+    try:
+        sampled_at = datetime.fromisoformat(sampled_raw)
+    except (TypeError, ValueError):
+        raise VatRuleError("采样时刻格式无效。")
+    return seq, redox_mv, sampled_at, operator.strip()
+
+
+@router.get("/retests", response_class=HTMLResponse)
+async def retest_page(
+    request: Request,
+    vat: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    user = _need_login(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return render(request, "retests.html", _retest_context(request, db, user, vat))
+
+
+@router.post("/retests", response_class=HTMLResponse)
+async def retest_create(
+    request: Request,
+    vat_id: int = Form(..., alias="vat"),
+    seq: str = Form(""),
+    redoxMv: str = Form(""),
+    sampledAt: str = Form(""),
+    operator: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _need_login(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    item = (
+        db.query(Vat)
+        .options(joinedload(Vat.retests))
+        .filter(Vat.id == vat_id)
+        .first()
+    )
+    if not item:
+        return RedirectResponse("/retests", status_code=303)
+
+    pending = {
+        "mode": "create",
+        "vat": vat_id,
+        "seq": seq,
+        "redoxMv": redoxMv,
+        "sampledAt": sampledAt,
+        "operator": operator,
+    }
+    try:
+        if item.status != Vat.STATUS_REDUCING:
+            raise VatRuleError(
+                f"缸 {item.code} 当前为{STATUS_LABELS.get(item.status, item.status)}，"
+                "只有还原中的缸允许登记电位复测；闲置与可染色一律拒绝。"
+            )
+        seq_no, mv, sampled_at, who = _parse_retest_form(
+            seq, redoxMv, sampledAt, operator
+        )
+        validate_retest_fields(item, seq_no, mv, list(item.retests))
+        db.add(
+            RedoxRetest(
+                vat_id=item.id,
+                seq=seq_no,
+                redoxMv=mv,
+                sampledAt=sampled_at,
+                operator=who,
+            )
+        )
+        # flush 让同缸连交两条相同序号时的唯一约束在此显式生效：至多一笔入库
+        db.flush()
+        db.commit()
+        return RedirectResponse(f"/retests?vat={item.id}", status_code=303)
+    except VatRuleError as exc:
+        db.rollback()
+        error = exc.message
+    except IntegrityError:
+        db.rollback()
+        error = f"复测序号 {seq} 在本缸已存在，同缸序号须唯一；该笔未入库。"
+    return render(
+        request,
+        "retests.html",
+        _retest_context(request, db, user, item.id, error, pending),
+        status_code=400,
+    )
+
+
+@router.post("/retests/{pk}/edit", response_class=HTMLResponse)
+async def retest_update(
+    pk: int,
+    request: Request,
+    seq: str = Form(""),
+    redoxMv: str = Form(""),
+    sampledAt: str = Form(""),
+    operator: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _need_login(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    retest = db.get(RedoxRetest, pk)
+    if not retest:
+        return RedirectResponse("/retests", status_code=303)
+    item = (
+        db.query(Vat)
+        .options(joinedload(Vat.retests))
+        .filter(Vat.id == retest.vat_id)
+        .first()
+    )
+
+    pending = {
+        "mode": "edit",
+        "id": pk,
+        "seq": seq,
+        "redoxMv": redoxMv,
+        "sampledAt": sampledAt,
+        "operator": operator,
+    }
+    try:
+        # 更新与新建共用序号唯一、电位上限校验（不重复检查还原中状态）
+        seq_no, mv, sampled_at, who = _parse_retest_form(
+            seq, redoxMv, sampledAt, operator
+        )
+        validate_retest_fields(item, seq_no, mv, list(item.retests), exclude_id=pk)
+        retest.seq = seq_no
+        retest.redoxMv = mv
+        retest.sampledAt = sampled_at
+        retest.operator = who
+        db.flush()
+        db.commit()
+        return RedirectResponse(f"/retests?vat={item.id}", status_code=303)
+    except VatRuleError as exc:
+        db.rollback()
+        error = exc.message
+    except IntegrityError:
+        db.rollback()
+        error = f"复测序号 {seq} 在本缸已存在，同缸序号须唯一；修改未保存。"
+    return render(
+        request,
+        "retests.html",
+        _retest_context(request, db, user, item.id, error, pending),
         status_code=400,
     )
 

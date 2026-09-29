@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}电位复测专页{% endblock %}
+{% block content %}
+<div x-data="retestPage({{ pending | tojson }})">
+  <div class="chips" role="toolbar" aria-label="按缸筛选复测">
+    <a class="chip {% if selected_vat is none %}on{% endif %}" href="/retests">全部缸位</a>
+    {% for v in vats %}
+    <a
+      class="chip st-{{ v.status }} {% if selected_vat == v.id %}on{% endif %}"
+      href="/retests?vat={{ v.id }}"
+    >{{ v.code }} · 复测 {{ v.retestCount }} 条</a>
+    {% endfor %}
+  </div>
+
+  {% if error %}
+  <div class="error-box">{{ error }}</div>
+  {% endif %}
+
+  <div class="panel">
+    <h2 style="margin:0 0 0.25rem;font-size:1.25rem;color:var(--indigo-deep)">电位复测记账</h2>
+    <p class="hint" style="color:#4a6670;font-size:0.88rem;margin:0 0 1rem">
+      复测只记账，不改动缸状态。仅「还原中」的缸允许登记；闲置与可染色拒绝。
+      电位必须填写且不得高于 <strong>-480 mV</strong>；同缸复测序号唯一。
+    </p>
+
+    <div class="panel-grid">
+      <form method="post" action="/retests" class="retest-form">
+        <h3 style="font-size:1rem;margin:0 0 0.65rem;color:#1f4d6b">新建复测</h3>
+        <label>染缸
+          <select name="vat" required>
+            {% for v in vats %}
+            <option value="{{ v.id }}"
+              {% if pending.mode == 'create' %}{% if pending.vat == v.id %}selected{% endif %}
+              {% elif selected_vat == v.id %}selected{% endif %}>
+              {{ v.code }}（{{ v.workshopName }} · {{ v.statusLabel }}）
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>复测序号（同缸唯一）
+          <input
+            type="number" name="seq" min="1" step="1" required
+            value="{{ pending.seq if pending.mode == 'create' else next_seq }}"
+          >
+        </label>
+        <label>电位 (mV，必填，≤ -480)
+          <input
+            type="number" name="redoxMv" step="0.01" max="-480" required
+            placeholder="例如 -520"
+            value="{{ pending.redoxMv if pending.mode == 'create' else '' }}"
+          >
+        </label>
+        <label>采样时刻
+          <input
+            type="datetime-local" name="sampledAt" required
+            value="{{ pending.sampledAt if pending.mode == 'create' else now_local }}"
+          >
+        </label>
+        <label>复测人
+          <input
+            type="text" name="operator" maxlength="80" placeholder="例如 杨师傅"
+            value="{{ pending.operator if pending.mode == 'create' else current_username }}"
+          >
+        </label>
+        <button type="submit">登记复测</button>
+      </form>
+
+      <div>
+        <h3 style="font-size:1rem;margin:0 0 0.65rem;color:#1f4d6b">
+          复测记录{% if selected_vat %}（{{ retests | length }} 条）{% endif %}
+        </h3>
+        <div class="retest-table-wrap">
+          <table class="retest-table">
+            <thead>
+              <tr>
+                <th>染缸</th><th>序号</th><th>电位 mV</th><th>采样时刻</th><th>复测人</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in retests %}
+              <tr x-show="editId !== {{ r.id }}" x-cloak>
+                <td>{{ r.code }}</td>
+                <td>{{ r.seq }}</td>
+                <td>{{ '%.2f'|format(r.redoxMv) }}</td>
+                <td>{{ r.sampledAtLabel }}</td>
+                <td>{{ r.operator or '—' }}</td>
+                <td class="row-act">
+                  <button type="button" class="link-btn" @click="editId = {{ r.id }}">修改</button>
+                </td>
+              </tr>
+              <tr class="edit-row" x-show="editId === {{ r.id }}" x-cloak>
+                <td colspan="6">
+                  <form method="post" action="/retests/{{ r.id }}/edit" class="inline-edit">
+                    <span class="edit-title">修改序号 {{ r.seq }}（序号唯一与电位上限同样校验）</span>
+                    <label>序号
+                      <input type="number" name="seq" min="1" step="1" required
+                        value="{{ pending.seq if pending.mode == 'edit' and pending.id == r.id else r.seq }}">
+                    </label>
+                    <label>电位 mV
+                      <input type="number" name="redoxMv" step="0.01" max="-480" required
+                        value="{{ pending.redoxMv if pending.mode == 'edit' and pending.id == r.id else '%.2f'|format(r.redoxMv) }}">
+                    </label>
+                    <label>采样时刻
+                      <input type="datetime-local" name="sampledAt" required
+                        value="{{ pending.sampledAt if pending.mode == 'edit' and pending.id == r.id else r.sampledAt }}">
+                    </label>
+                    <label>复测人
+                      <input type="text" name="operator" maxlength="80"
+                        value="{{ pending.operator if pending.mode == 'edit' and pending.id == r.id else r.operator }}">
+                    </label>
+                    <span class="edit-acts">
+                      <button type="submit">保存</button>
+                      <button type="button" class="link-btn" @click="editId = null">取消</button>
+                    </span>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+              <tr x-show="{{ retests | length }} === 0">
+                <td colspan="6" class="no-data">
+                  {% if selected_status and selected_status != 'reducing' %}
+                  该缸当前为「{{ selected_status_label }}」，不允许登记复测。
+                  {% else %}
+                  暂无复测记录。
+                  {% endif %}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="rule-foot">
+    均值门槛：改可染色时，除最新浸染电位 ≤ -500 mV 外，还须有至少 3 条连续序号复测，
+    最近三条电位算术平均 ≤ -510 mV，且最后一次复测采样时刻晚于该缸最近浸染；
+    全部通过后，平均值才会回写为该缸最新浸染批次的电位（与状态同事务，失败不留半截改写）。
+    缸位条上的复测条数与本专页计数一致。
+  </p>
+</div>
+
+<script>
+  function retestPage(pending) {
+    return {
+      editId: pending && pending.mode === 'edit' ? pending.id : null,
+    };
+  }
+</script>
+{% endblock %}
